@@ -9,3 +9,4 @@ Repo for our final project: training an autonomous agent in an environment.
 - Link to the moodle: https://moodle.polytechnique.fr/mod/assign/view.php?id=42619
 - if you have not attended the courses: https://fr.wikipedia.org/wiki/Processus_de_d%C3%A9cision_markovien (just read this page and then try to do the PC)
 - an interesting stanford paper. Contains describtion of the problem ! https://web.stanford.edu/class/aa228/reports/2018/final150.pdf
+- https://github.com/gui-miotto/DeepLearningLab/blob/master/Assignment%2003/DL%20Lab%20-%20Assignment%2003%20-%20Guilherme%20Miotto.pdf
