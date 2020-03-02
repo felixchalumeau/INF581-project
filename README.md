@@ -8,4 +8,4 @@ Repo for our final project: training an autonomous agent in an environment.
 - The car racing environment we are using: https://gym.openai.com/envs/CarRacing-v0/
 - Link to the moodle: https://moodle.polytechnique.fr/mod/assign/view.php?id=42619
 - if you have not attended the courses: https://fr.wikipedia.org/wiki/Processus_de_d%C3%A9cision_markovien (just read this page and then try to do the PC)
-- 
+- an interesting stanford paper. Contains describtion of the problem ! https://web.stanford.edu/class/aa228/reports/2018/final150.pdf
