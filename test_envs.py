@@ -14,10 +14,9 @@ for i_episode in range(2):
         print(observation)
         
         action = random.choice(new_action_space)
-        if t < 68: 
+        action = np.array([0, 0, 0])
+        if t%2 ==0 : 
             action = np.array([0, 1, 0])
-        elif t>68 and t<75:
-            action = np.array([-1, 0, 0])
 
         observation, reward, done, info = env.step(action)
         if done:

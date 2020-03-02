@@ -1,18 +1,88 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import gym
+import random
 
 # TODO: explain following
-ENV_NAME = "CartPole-v0"
+ENV_NAME = "CarRacing-v0"
 EPISODE_DURATION = 300
 ALPHA_INIT = 0.1 # (can also decay this over time..)
-SCORE = 195.0
+SCORE = 200
 TEST_TIME = 100
 LEFT = 0
 RIGHT = 1
 
 VERBOSE = True
 
+#########################################################################################
+
+# First: we accelerate once every two frames and choose left or right each time
+DISCRETE_ACTION_SPACE = [np.array([-1, 0, 0]), np.array([1, 0, 0])]
+
+# [np.array([-1, 0, 0]), np.array([1, 0, 0]), np.array([0, 1, 0]), np.array([0, 0, 0]), np.array([0, 0, 1])]
+
+#########################################################################################
+
+# from complex to simple image (observation)
+def preprocess(rgb):
+    '''
+    Simplifie l'image. PAsse de RGB à gray et enlève le base inutile.
+    '''
+    end_img = 84
+    
+    gray = np.dot(rgb[...,:3], [0.0, 0.5, 0.5])
+    gray[gray>150] = 180
+    return gray[:84]
+
+# get useful informations from an observation
+def capteur(observation):
+    '''
+    Position du nez de la voiture codé en dur pour l'instant.
+    Cette fonction renvoie les quatres distances d'intérêt !
+    '''
+    i_nose = 67
+    j_left = 46
+    j_right = 49
+    
+    grass_color = 180
+
+    # informations horizontales
+    horizontal = np.where(observation[67] == grass_color)[0]
+    try:
+        hori_gauche = 46 - horizontal[horizontal < 46][-1]
+    except:
+        hori_gauche = -1
+    try:
+        hori_droite = horizontal[horizontal > 49][0] - 49
+    except:
+        hori_droite = -1
+    
+    # informations verticales
+    vertical_gauche = np.where(observation[:, 46] == grass_color)[0]
+    try:
+        verti_gauche = 67 - vertical_gauche[vertical_gauche < 67][-1]
+    except:
+        verti_gauche = -1
+
+    vertical_droite = np.where(observation[:, 49] == grass_color)[0]
+    try:
+        verti_droite = 67 - vertical_droite[vertical_droite < 67][-1]
+    except:
+        verti_droite = -1
+
+    return [hori_gauche, hori_droite, verti_gauche, verti_droite]
+
+# a kind of complete preprocessing of the images observed
+def useful_from_observation(rgb):
+    '''
+    From an observation (or a state), which is a 96x96 RGB image, we return 4 distances, which will be used by our classifier.
+    '''
+    gray = preprocess(rgb)
+    return capteur(gray)
+
+#################################################################################
+
+# transparent
 def sigmoid(x):
     return 1.0 / (1.0 + np.exp(-x))
 
@@ -28,14 +98,16 @@ def act_with_policy(s, theta):
     p_right = get_policy(s, theta)[1]
     r = np.random.rand()
     if r < p_right:
-        return 1
+        return np.array([1, 0, 0])
     else:
-        return 0
+        return np.array([-1, 0, 0])
 
 # Generate an episode
 def gen_rollout(env, theta, max_episode_length=EPISODE_DURATION, render=False):
 
     s_t = env.reset()
+    s_t = useful_from_observation(s_t)
+
     episode_states = []
     episode_actions = []
     episode_rewards = []
@@ -47,7 +119,15 @@ def gen_rollout(env, theta, max_episode_length=EPISODE_DURATION, render=False):
             env.render()
 
         a_t = act_with_policy(s_t, theta)
+
+        if t%2 == 0:
+            a_t += np.array([0, 1, 0])
+
         s_t, r_t, done, info = env.step(a_t)
+        print(r_t)
+        
+        s_t = useful_from_observation(s_t)
+
         episode_states.append(s_t)
         episode_actions.append(a_t)
         episode_rewards.append(r_t)
@@ -146,10 +226,10 @@ def main():
 
     env = gym.make(ENV_NAME)
 
-    dim = env.observation_space.shape[0]
+    # dim = env.observation_space.shape[0]
 
     # Init parameters to random
-    theta_init = np.random.randn(1,dim)
+    theta_init = np.random.randn(1, 4)
 
     # Train agent
     theta, i, average_returns = train(env, theta_init)
