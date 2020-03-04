@@ -11,3 +11,4 @@ Repo for our final project: training an autonomous agent in an environment.
 - an interesting stanford paper. Contains describtion of the problem ! https://web.stanford.edu/class/aa228/reports/2018/final150.pdf
 - https://github.com/gui-miotto/DeepLearningLab/blob/master/Assignment%2003/DL%20Lab%20-%20Assignment%2003%20-%20Guilherme%20Miotto.pdf
 - an interesting post on DQN : https://towardsdatascience.com/reinforcement-learning-w-keras-openai-dqns-1eed3a5338c
+- final report on overleaf: https://www.overleaf.com/project/5e5cd6a3be38d60001360ea1
