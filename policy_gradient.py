@@ -7,12 +7,14 @@ import random
 ENV_NAME = "CarRacing-v0"
 EPISODE_DURATION = 15000
 EPISODE_DURATION_AUGM = 25
-ALPHA_INIT = 0.1 # (can also decay this over time..)
+ALPHA_INIT = 0.01 # (can also decay this over time..)
 SCORE = 300
 TEST_TIME = 0
 TEST_TIME_AUGM = 1
 LEFT = np.array([-1, 0, 0])
 RIGHT = np.array([1, 0, 0])
+
+GAMMA = 0.99
 
 EPSILON = 0.05
 
@@ -75,7 +77,10 @@ def capteur(observation):
     except:
         verti_droite = 67
 
-    return np.array([hori_gauche, hori_droite, verti_gauche, verti_droite])/20
+    res = np.array([hori_gauche, hori_droite, verti_gauche, verti_droite])
+    res[res == 1] == 0
+
+    return res/20
 
 # a kind of complete preprocessing of the images observed
 def useful_from_observation(rgb):
@@ -133,7 +138,7 @@ def gen_rollout(env, theta, max_episode_length=EPISODE_DURATION, render=False):
 
         a_t = act_with_policy(s_t, theta)
 
-        if t%4 == 0:
+        if t%6 == 0:
             a_t += np.array([0.0, 1.0, 0.0])
 
         s_t, r_t, done, info = env.step(a_t)
@@ -144,12 +149,15 @@ def gen_rollout(env, theta, max_episode_length=EPISODE_DURATION, render=False):
         s_t = np.concatenate((s_t, s_t-old_s_t))
         
         # working on the reward
-        # r_t += (- s_t[0]**2 - s_t[1]**2)
+        # r_t += -(s_t[0]**2 + s_t[1]**2)*100
+
         if ((s_t[:4]==np.array([0.05, 0.05, 0.05, 0.05])).all()):
             r_t = r_t - 1
             to_stop = to_stop - 1
         elif (s_t[0]==0.05 or s_t[1]==0.05):
             r_t = r_t - 0.5
+        else:
+            r_t += 0.2-(s_t[0]**2 + s_t[1]**2)*100
 
         episode_states.append(s_t)
         episode_actions.append(a_t)
@@ -193,10 +201,17 @@ def compute_PG(episode_states, episode_actions, episode_rewards, theta):
     H = len(episode_rewards)
     PG = 0
 
+    H2 = 50
+
     for t in range(H):
+        if H == 1000 and H - t < 100:
+            break
         pi = get_policy(episode_states[t], theta)
         a_t = episode_actions[t]
-        R_t = sum(episode_rewards[t::])
+        
+        # R_t = sum(np.array(episode_rewards[t::])*np.array([GAMMA**i for i in range(0, H-t)]))
+        R_t = sum(episode_rewards[t::t+H2])
+
 
         #if (a_t[0] == 1):
         #    g_theta_log_pi = - pi[1] * episode_states[t] * R_t
@@ -227,7 +242,7 @@ def train(env, theta_init, max_episode_length = EPISODE_DURATION, alpha_init = A
         episode_states, episode_actions, episode_rewards = gen_rollout(env, theta, max_episode_length, render=True)
 
         # Schedule step size
-        alpha = alpha_init / (1 + 5*i_episode)
+        alpha = alpha_init / (1 + i_episode)
 
         # Compute gradient
         PG = compute_PG(episode_states, episode_actions, episode_rewards, theta)
