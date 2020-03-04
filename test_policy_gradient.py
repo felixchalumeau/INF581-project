@@ -7,14 +7,16 @@ import random
 ENV_NAME = "CarRacing-v0"
 EPISODE_DURATION = 15000
 EPISODE_DURATION_AUGM = 25
-ALPHA_INIT = 0.1 # (can also decay this over time..)
+ALPHA_INIT = 0.2 # (can also decay this over time..)
 SCORE = 900
-TEST_TIME = 3
+TEST_TIME = 1
 TEST_TIME_AUGM = 1
 LEFT = np.array([-1, 0, 0])
 RIGHT = np.array([1, 0, 0])
 
-EPSILON = 0.05
+LAMBDA = 1 # to smooth decisions
+
+EPSILON = 0.2
 
 VERBOSE = True
 
@@ -45,6 +47,7 @@ def capteur(observation):
     Cette fonction renvoie les quatres distances d'intérêt !
     '''
     i_nose = 67
+    i_back = 76
     j_left = 46
     j_right = 49
     
@@ -52,16 +55,22 @@ def capteur(observation):
     road_color = 102
 
     # informations horizontales
-    horizontal = np.where(observation[67] == grass_color)[0]
-    try:
-        hori_gauche = 46 - horizontal[horizontal < 46][-1]
-    except:
-        hori_gauche = 46
-    try:
-        hori_droite = horizontal[horizontal > 49][0] - 49
-    except:
-        hori_droite = 46
-    
+    # nose
+
+    hori = []
+    for i_ in [i_nose, i_back]:
+        horizontal = np.where(observation[i_] == grass_color)[0]
+        try:
+            hori_g = 46 - horizontal[horizontal < 46][-1]
+        except:
+            hori_g = 46
+        try:
+            hori_d = horizontal[horizontal > 49][0] - 49
+        except:
+            hori_d = 46
+        hori += [hori_g, hori_d]
+
+
     # informations verticales
     vertical_gauche = np.where(observation[:, 46] == grass_color)[0]
     try:
@@ -74,8 +83,10 @@ def capteur(observation):
         verti_droite = 67 - vertical_droite[vertical_droite < 67][-1]
     except:
         verti_droite = 67
+    
+    res = np.array(hori + [0, 0])
 
-    return np.array([hori_gauche, hori_droite, verti_gauche, verti_droite])/20
+    return res/20
 
 # a kind of complete preprocessing of the images observed
 def useful_from_observation(rgb):
@@ -95,35 +106,43 @@ def sigmoid(x):
 def get_policy(s, theta):
 
     p_right = sigmoid(np.dot(s, np.transpose(theta)))
-    # pi = [1-p_right, p_right]
-    # return pi
-    return 2*p_right - 1
+    pi = [1-p_right, p_right]
+    return pi
+    # return 2*p_right - 1
 
 # Draw an action according to current policy
 def act_with_policy(s, theta):
-    # p_right = get_policy(s, theta)[1]
-    p_right = get_policy(s, theta)
+    p_right = get_policy(s, theta)[1]
+    #p_right = get_policy(s, theta)
+    #r=0
+    #if np.random.rand() < EPSILON:
+    #    r = np.random.rand()
+    #    if p_right >0:
+    #        r = -r
+
     r = np.random.rand()
-    # if r < EPSILON:
-    #    return np.array([1, 0, 0])
-    #else:
-    #    return np.array([-1, 0, 0])
-    turn = np.clip(np.array([p_right + r*EPSILON]), a_min = -1, a_max = 1)[0][0]
-    return np.array([turn, 0.0, 0.0])
+    if r < p_right:
+        return np.array([1.0, 0, 0])
+    else:
+        return np.array([-1.0, 0, 0])
+
+    # turn = np.clip(np.array([p_right + r*10*EPSILON]), a_min = -1, a_max = 1)[0][0]
+    #print([p_right, r, turn])
+    #return np.array([turn, 0.0, 0.0])
 
 # Generate an episode
 def gen_rollout(env, theta, max_episode_length=EPISODE_DURATION, render=False):
 
     s_t = env.reset()
     s_t = useful_from_observation(s_t)
-    s_t = np.concatenate((s_t, np.array([0, 0, 0, 0])))
+    s_t = np.concatenate((s_t, np.array([0, 0, 0, 0, 0, 0])))
 
     episode_states = []
     episode_actions = []
     episode_rewards = []
     episode_states.append(s_t)
 
-    to_stop = 15
+    to_stop = 25
 
     for t in range(max_episode_length):
 
@@ -139,16 +158,17 @@ def gen_rollout(env, theta, max_episode_length=EPISODE_DURATION, render=False):
         
         # transform the state to a usable one
         s_t = useful_from_observation(s_t)
-        old_s_t = episode_states[-1][:4]
+        old_s_t = episode_states[-1][:6]
         s_t = np.concatenate((s_t, s_t-old_s_t))
-        
+
         # working on the reward
         # r_t += (- s_t[0]**2 - s_t[1]**2)
-        if ((s_t[:4]==np.array([0.05, 0.05, 0.05, 0.05])).all()):
-            r_t = r_t - 1
+        if ((s_t[:2]==np.array([0.05, 0.05])).all()):
+            r_t = r_t - 2
             to_stop = to_stop - 1
         elif (s_t[0]==0.05 or s_t[1]==0.05):
-            r_t = r_t - 0.5
+            r_t = r_t - 1
+        r_t += 0.2
 
         episode_states.append(s_t)
         episode_actions.append(a_t)
@@ -197,12 +217,13 @@ def compute_PG(episode_states, episode_actions, episode_rewards, theta):
         a_t = episode_actions[t]
         R_t = sum(episode_rewards[t::])
 
-        #if (a_t[0] == 1):
-        #    g_theta_log_pi = - pi[1] * episode_states[t] * R_t
-        #else:
-        #    g_theta_log_pi = pi[0] * episode_states[t] * R_t
+        if (a_t[0] == 1):
+            g_theta_log_pi = - pi[0] * episode_states[t] * R_t # j'ai enlevé le moins 
+        else:
+            g_theta_log_pi = pi[1] * episode_states[t] * R_t
         
-        g_theta_log_pi = pi * episode_states[t] * R_t
+        # g_theta_log_pi = pi * episode_states[t] * R_t
+        # g_theta_log_pi = LAMBDA * a_t[0] * episode_states[t] * R_t # * np.exp(-np.dot(episode_states[t], np.transpose(theta)))
         PG += g_theta_log_pi
 
     return PG
@@ -216,9 +237,6 @@ def train(env, theta_init, max_episode_length = EPISODE_DURATION, alpha_init = A
 
     success, _, R = test_policy(env, theta, render=True)
     average_returns.append(R)
-
-    new_max_episode_length = max_episode_length
-    new_test_time = TEST_TIME
 
     # Train until success
     while (not success):
@@ -235,9 +253,15 @@ def train(env, theta_init, max_episode_length = EPISODE_DURATION, alpha_init = A
         # Do gradient ascent 
         theta += alpha * PG
 
+        # Normalize theta
+        norm = theta@theta.T
+        norm = norm.flatten()
+        norm = norm[0]**0.5
+
+        # theta = theta/norm
+
         # Test new policy 
-        # new_test_time += TEST_TIME_AUGM
-        success, _, R = test_policy(env, theta, score=SCORE, num_episodes=new_test_time, max_episode_length= max_episode_length, render=True)
+        success, _, R = test_policy(env, theta, score=SCORE, max_episode_length= max_episode_length, render=True)
 
         # Monitor 
         average_returns.append(R)
@@ -257,7 +281,7 @@ def main():
     # dim = env.observation_space.shape[0]
 
     # Init parameters to random
-    theta_init = np.random.randn(1, 8)
+    theta_init = np.random.randn(1, 12)
 
     # Train agent
     theta, i, average_returns = train(env, theta_init)
