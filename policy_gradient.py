@@ -8,8 +8,8 @@ ENV_NAME = "CarRacing-v0"
 EPISODE_DURATION = 15000
 EPISODE_DURATION_AUGM = 25
 ALPHA_INIT = 0.1 # (can also decay this over time..)
-SCORE = 900
-TEST_TIME = 3
+SCORE = 300
+TEST_TIME = 0
 TEST_TIME_AUGM = 1
 LEFT = np.array([-1, 0, 0])
 RIGHT = np.array([1, 0, 0])
@@ -89,6 +89,7 @@ def useful_from_observation(rgb):
 
 # transparent
 def sigmoid(x):
+    x = np.clip(x, -100, 100)
     return 1.0 / (1.0 + np.exp(-x))
 
 # Return policy
@@ -217,7 +218,6 @@ def train(env, theta_init, max_episode_length = EPISODE_DURATION, alpha_init = A
     success, _, R = test_policy(env, theta, render=True)
     average_returns.append(R)
 
-    new_max_episode_length = max_episode_length
     new_test_time = TEST_TIME
 
     # Train until success
@@ -227,7 +227,7 @@ def train(env, theta_init, max_episode_length = EPISODE_DURATION, alpha_init = A
         episode_states, episode_actions, episode_rewards = gen_rollout(env, theta, max_episode_length, render=True)
 
         # Schedule step size
-        alpha = alpha_init / (1 + i_episode)
+        alpha = alpha_init / (1 + 5*i_episode)
 
         # Compute gradient
         PG = compute_PG(episode_states, episode_actions, episode_rewards, theta)
