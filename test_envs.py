@@ -13,8 +13,13 @@ for i_episode in range(2):
     for t in range(200):
         env.render()        
         action = random.choice(new_action_space)
+        action = np.array([0, 0, 0])
+        if t%2 ==0 : 
+            action = np.array([0, 1, 0])
+
         observation, reward, done, info = env.step(action)
         if done:
             print("Episode finished after {} timesteps".format(t+1))
             break
+ 
 env.close()

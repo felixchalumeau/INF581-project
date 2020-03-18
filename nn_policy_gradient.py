@@ -3,18 +3,26 @@ import matplotlib.pyplot as plt
 import gym
 import random
 
+import matplotlib.pyplot as plt
+from tqdm import tqdm, trange
+import pandas as pd
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.nn.functional as F
+from torch.autograd import Variable
+from torch.distributions import Categorical
+
 # TODO: explain following
 ENV_NAME = "CarRacing-v0"
 EPISODE_DURATION = 15000
 EPISODE_DURATION_AUGM = 25
-ALPHA_INIT = 0.01 # (can also decay this over time..)
-SCORE = 300
+ALPHA_INIT = 0.1 # (can also decay this over time..)
+SCORE = 900
 TEST_TIME = 0
 TEST_TIME_AUGM = 1
 LEFT = np.array([-1, 0, 0])
 RIGHT = np.array([1, 0, 0])
-
-GAMMA = 0.99
 
 EPSILON = 0.05
 
@@ -77,10 +85,7 @@ def capteur(observation):
     except:
         verti_droite = 67
 
-    res = np.array([hori_gauche, hori_droite, verti_gauche, verti_droite])
-    res[res == 1] == 0
-
-    return res/20
+    return np.array([hori_gauche, hori_droite, verti_gauche, verti_droite])/20
 
 # a kind of complete preprocessing of the images observed
 def useful_from_observation(rgb):
@@ -89,6 +94,86 @@ def useful_from_observation(rgb):
     '''
     gray = preprocess(rgb)
     return capteur(gray)
+
+#################################################################################
+learning_rate = 0.01
+gamma = 0.99
+
+class Policy(nn.Module):
+    def __init__(self):
+        super(Policy, self).__init__()
+        self.state_space = 12
+        self.action_space = 2
+        
+        self.l1 = nn.Linear(self.state_space, 24, bias=False)
+        self.l2 = nn.Linear(24, self.action_space, bias=False)
+        
+        self.gamma = gamma
+        
+        # Episode policy and reward history 
+        self.policy_history = Variable(torch.Tensor()) 
+        self.reward_episode = []
+        # Overall reward and loss history
+        self.reward_history = []
+        self.loss_history = []
+
+    def forward(self, x):    
+        model = torch.nn.Sequential(
+            self.l1,
+            nn.Dropout(p=0.6),
+            nn.ReLU(),
+            self.l2,
+            nn.Softmax(dim=-1)
+        )
+        return model(x)
+
+policy = Policy()
+optimizer = optim.Adam(policy.parameters(), lr=learning_rate)
+
+def select_action(state):
+    #Select an action (0 or 1) by running policy model and choosing based on the probabilities in state
+    state = torch.from_numpy(state).type(torch.FloatTensor)
+    state = policy(Variable(state))
+    c = Categorical(state)
+    action = c.sample()
+    
+    # Add log probability of our chosen action to our history    
+    if policy.policy_history.dim() != 0:
+        policy.policy_history = torch.cat([policy.policy_history, c.log_prob(action)])
+    else:
+        policy.policy_history = (c.log_prob(action))
+    return action
+
+
+def update_policy():
+    R = 0
+    rewards = []
+    
+    # Discount future rewards back to the present using gamma
+    for r in policy.reward_episode[::-1]:
+        R = r + policy.gamma * R
+        rewards.insert(0,R)
+        
+    # Scale rewards
+    rewards = torch.FloatTensor(rewards)
+    rewards = (rewards - rewards.mean()) / (rewards.std() + np.finfo(np.float32).eps)
+    
+    # Calculate loss
+    loss = (torch.sum(torch.mul(policy.policy_history, Variable(rewards)).mul(-1), -1))
+    
+    # Update network weights
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+    
+    #Save and intialize episode history counters
+    policy.loss_history.append(loss.data[0])
+    policy.reward_history.append(np.sum(policy.reward_episode))
+    policy.policy_history = Variable(torch.Tensor())
+    policy.reward_episode= []
+
+
+
 
 #################################################################################
 
@@ -138,7 +223,7 @@ def gen_rollout(env, theta, max_episode_length=EPISODE_DURATION, render=False):
 
         a_t = act_with_policy(s_t, theta)
 
-        if t%6 == 0:
+        if t%4 == 0:
             a_t += np.array([0.0, 1.0, 0.0])
 
         s_t, r_t, done, info = env.step(a_t)
@@ -149,15 +234,12 @@ def gen_rollout(env, theta, max_episode_length=EPISODE_DURATION, render=False):
         s_t = np.concatenate((s_t, s_t-old_s_t))
         
         # working on the reward
-        # r_t += -(s_t[0]**2 + s_t[1]**2)*100
-
+        # r_t += (- s_t[0]**2 - s_t[1]**2)
         if ((s_t[:4]==np.array([0.05, 0.05, 0.05, 0.05])).all()):
             r_t = r_t - 1
             to_stop = to_stop - 1
         elif (s_t[0]==0.05 or s_t[1]==0.05):
             r_t = r_t - 0.5
-        else:
-            r_t += 0.2-(s_t[0]**2 + s_t[1]**2)*100
 
         episode_states.append(s_t)
         episode_actions.append(a_t)
@@ -201,17 +283,10 @@ def compute_PG(episode_states, episode_actions, episode_rewards, theta):
     H = len(episode_rewards)
     PG = 0
 
-    H2 = 50
-
     for t in range(H):
-        if H == 1000 and H - t < 100:
-            break
         pi = get_policy(episode_states[t], theta)
         a_t = episode_actions[t]
-        
-        # R_t = sum(np.array(episode_rewards[t::])*np.array([GAMMA**i for i in range(0, H-t)]))
-        R_t = sum(episode_rewards[t::t+H2])
-
+        R_t = sum(episode_rewards[t::])
 
         #if (a_t[0] == 1):
         #    g_theta_log_pi = - pi[1] * episode_states[t] * R_t
@@ -242,7 +317,7 @@ def train(env, theta_init, max_episode_length = EPISODE_DURATION, alpha_init = A
         episode_states, episode_actions, episode_rewards = gen_rollout(env, theta, max_episode_length, render=True)
 
         # Schedule step size
-        alpha = alpha_init / (1 + i_episode)
+        alpha = alpha_init / (1 + 5*i_episode)
 
         # Compute gradient
         PG = compute_PG(episode_states, episode_actions, episode_rewards, theta)
