@@ -21,7 +21,7 @@ You can train yourself the model by using agent.train(memory) where the memory c
 **Performances**
 
 Here is a video showing the behavior of the agent after a training period of 1000 epochs of 100 training samples. (~30min training)
-<div align=center><img src="resources/car_racing_demo.gif"/></div>
+<div align=center><img src="./resources/car_racing_demo.gif"/></div>
 
 **Useful links:**
 - Easy CHair for submissions and reviews: https://easychair.org/my/conference?conf=inf5812020
