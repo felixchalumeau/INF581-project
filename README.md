@@ -8,6 +8,7 @@ Repo for our final project: training an autonomous agent in the Gym Car-Racing e
 The project needs gym box2D environments. To install it:
 - you must have installed swig (http://www.swig.org/download.html), which might need Visual Studio Tools for C++ if you're on Windows
 - then do "pip install box2d-py" and it should works fine
+The project also needs keras and pytorch.
 
 **Files**
 
